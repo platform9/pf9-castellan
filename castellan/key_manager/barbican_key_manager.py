@@ -36,6 +36,7 @@ from castellan.common.objects import key as key_base_class
 from castellan.common.objects import opaque_data as op_data
 from castellan.i18n import _
 from castellan.key_manager import key_manager
+from castellan.common import utils
 
 from barbicanclient import client as barbican_client_import
 from barbicanclient import exceptions as barbican_exceptions
@@ -116,6 +117,7 @@ class BarbicanKeyManager(key_manager.KeyManager):
                                               _BARBICAN_SERVICE_USER_OPT_GROUP)
         loading.register_auth_conf_options(self.conf,
                                            _BARBICAN_SERVICE_USER_OPT_GROUP)
+        self.ks_context = utils.credential_factory(conf=configuration)
 
     def _get_barbican_client(self, context):
         """Creates a client to connect to the Barbican service.
@@ -126,7 +128,7 @@ class BarbicanKeyManager(key_manager.KeyManager):
         :raises KeyManagerError: if context is missing tenant or tenant is
                                  None or error occurs while creating client
         """
-
+        context = self.ks_context
         # Confirm context is provided, if not raise forbidden
         if not context:
             msg = _("User is not authorized to use key manager.")

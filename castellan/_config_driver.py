@@ -115,8 +115,10 @@ class CastellanConfigurationSource(sources.ConfigurationSource):
     def get(self, group_name, option_name, opt):
         try:
             group_name = group_name or "DEFAULT"
-
-            castellan_id = self._mapping[group_name][option_name][0]
+            if option_name is None and opt is not None:
+                castellan_id = opt
+            else:
+                castellan_id = self._mapping[group_name][option_name][0]
 
             return (self._mngr.get("ctx", castellan_id).get_encoded().decode(),
                     cfg.LocationInfo(cfg.Locations.user, castellan_id))

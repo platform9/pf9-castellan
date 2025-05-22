@@ -115,16 +115,19 @@ class CastellanConfigurationSource(sources.ConfigurationSource):
     def get(self, group_name, option_name, opt):
         try:
             group_name = group_name or "DEFAULT"
-
-            castellan_id = self._mapping[group_name][option_name][0]
+            if option_name is None and opt is not None:
+                castellan_id = opt
+            else:
+                castellan_id = self._mapping[group_name][option_name][0]
 
             return (self._mngr.get("ctx", castellan_id).get_encoded().decode(),
                     cfg.LocationInfo(cfg.Locations.user, castellan_id))
 
         except KeyError:
+            pass
             # no mapping 'option = castellan_id'
-            LOG.debug("option '[%s] %s' not present in '[%s] mapping_file'",
-                      group_name, option_name, self._name)
+            #LOG.debug("option '[%s] %s' not present in '[%s] mapping_file'",
+            #         group_name, option_name, self._name)
 
         except KeyManagerError:
             # bad mapping 'option =' without a castellan_id

@@ -124,9 +124,10 @@ class CastellanConfigurationSource(sources.ConfigurationSource):
                     cfg.LocationInfo(cfg.Locations.user, castellan_id))
 
         except KeyError:
+            pass
             # no mapping 'option = castellan_id'
-            LOG.debug("option '[%s] %s' not present in '[%s] mapping_file'",
-                      group_name, option_name, self._name)
+            #LOG.debug("option '[%s] %s' not present in '[%s] mapping_file'",
+            #         group_name, option_name, self._name)
 
         except KeyManagerError:
             # bad mapping 'option =' without a castellan_id

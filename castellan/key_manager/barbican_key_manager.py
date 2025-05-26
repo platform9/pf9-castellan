@@ -117,7 +117,6 @@ class BarbicanKeyManager(key_manager.KeyManager):
                                               _BARBICAN_SERVICE_USER_OPT_GROUP)
         loading.register_auth_conf_options(self.conf,
                                            _BARBICAN_SERVICE_USER_OPT_GROUP)
-        self.ks_context = utils.credential_factory(conf=configuration)
 
     def _get_barbican_client(self, context):
         """Creates a client to connect to the Barbican service.
@@ -128,7 +127,6 @@ class BarbicanKeyManager(key_manager.KeyManager):
         :raises KeyManagerError: if context is missing tenant or tenant is
                                  None or error occurs while creating client
         """
-        context = self.ks_context
         # Confirm context is provided, if not raise forbidden
         if not context:
             msg = _("User is not authorized to use key manager.")

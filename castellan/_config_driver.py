@@ -45,6 +45,7 @@ The Configuration Source Class
 from castellan.common.exception import KeyManagerError
 from castellan.common.exception import ManagedObjectNotFoundError
 from castellan import key_manager
+from castellan.common import utils
 
 from oslo_config import cfg
 from oslo_config import sources
@@ -103,16 +104,19 @@ class CastellanConfigurationSource(sources.ConfigurationSource):
     """
 
     def __init__(self, group_name, config_file, mapping_file):
-        conf = cfg.ConfigOpts()
-        conf(args=[], default_config_files=[config_file])
+        self.conf = cfg.ConfigOpts()
+        self.conf(args=[], default_config_files=[config_file])
 
         self._name = group_name
-        self._mngr = key_manager.API(conf)
+        self._mngr = key_manager.API(self.conf)
         self._mapping = {}
+        self.ks_context = None
 
         cfg.ConfigParser(mapping_file, self._mapping).parse()
 
     def get(self, group_name, option_name, opt):
+        if self.ks_context is None:
+           self.ks_context = utils.credential_factory(self.conf)
         try:
             group_name = group_name or "DEFAULT"
             if option_name is None and opt is not None:
@@ -120,7 +124,7 @@ class CastellanConfigurationSource(sources.ConfigurationSource):
             else:
                 castellan_id = self._mapping[group_name][option_name][0]
 
-            return (self._mngr.get("ctx", castellan_id).get_encoded().decode(),
+            return (self._mngr.get(self.ks_context, castellan_id).get_encoded().decode(),
                     cfg.LocationInfo(cfg.Locations.user, castellan_id))
 
         except KeyError:

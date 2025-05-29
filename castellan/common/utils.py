@@ -21,6 +21,7 @@ from castellan.common.credentials import keystone_token
 from castellan.common.credentials import password
 from castellan.common.credentials import token
 from castellan.common import exception
+import requests
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -91,6 +92,20 @@ credential_opts = [
 
 OPT_GROUP = 'key_manager'
 
+def get_keystone_pass(username):
+        """Retrieves the keystone password for the given username.
+        :param username: the username to retrieve the password for
+        :return: the keystone password
+        """
+        session = requests.Session()
+        vouch_comms_url = 'http://localhost:8558'
+        try:
+            resp = session.get(f'{vouch_comms_url}/v1/creds/{username}')
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            LOG.error('Could not fetch password info from vouch, %s: %s',vouch_comms_url , e)
+            raise
 
 def credential_factory(conf=None, context=None):
     """This function provides a factory for credentials.
@@ -130,8 +145,9 @@ def credential_factory(conf=None, context=None):
                 conf.key_manager.password)
 
         elif conf.key_manager.auth_type == 'keystone_password':
+            keystone_pass = get_keystone_pass(conf.key_manager.username)
             return keystone_password.KeystonePassword(
-                conf.key_manager.password,
+                keystone_pass,
                 auth_url=conf.key_manager.auth_url,
                 username=conf.key_manager.username,
                 user_id=conf.key_manager.user_id,

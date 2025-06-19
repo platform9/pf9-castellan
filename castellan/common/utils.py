@@ -249,7 +249,7 @@ class SharedStringMemory:
             self.shm.buf[:] = b'\x00' * self.size
             return "created"
     
-    def write_varible(self, message):
+    def write_variable(self, message):
         """Encode message with UTF-8 and write to cache"""
         if not self.shm:
             raise RuntimeError("cache not initialized")

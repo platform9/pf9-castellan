@@ -120,7 +120,7 @@ def get_keystone_pass(username):
                 resp.raise_for_status()
                 creds = resp.json()
                 try:
-                    shared_mem.write_varible(creds)
+                    shared_mem.write_variable(creds)
                     shared_mem.close()
                 except Exception as e:
                     LOG.error('Error writing to cache for %s: %s', username, e)

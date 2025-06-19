@@ -109,7 +109,7 @@ def get_keystone_pass(username):
                     shared_mem.close()
                     return creds
                 else:
-                    LOG.warning(f"No credentials found in cache for {username}.")
+                    LOG.warning(f"No data found in cache for {username}.")
                           
             LOG.info(f"New cache for {username} created.") 
             # Fetch creds from vouch
@@ -119,13 +119,19 @@ def get_keystone_pass(username):
                 resp = session.get(f'{vouch_comms_url}/v1/creds/{username}')
                 resp.raise_for_status()
                 creds = resp.json()
-                shared_mem.write_varible(creds)
-                shared_mem.close()
+                try:
+                    shared_mem.write_varible(creds)
+                    shared_mem.close()
+                except Exception as e:
+                    LOG.error('Error writing to cache for %s: %s', username, e)
+                    shared_mem.cleanup()
+                    pass
+                
                 return creds
                 
             except Exception as e:
                 shared_mem.cleanup()
-                LOG.error('Could not fetch password info from vouch, %s: %s',vouch_comms_url , e)
+                LOG.error('Could not fetch data info from vouch, %s: %s',vouch_comms_url , e)
                 raise
         except Exception as e:
             LOG.error('Error accessing cache for %s: %s', username, e)

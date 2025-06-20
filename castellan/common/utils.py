@@ -22,6 +22,7 @@ from castellan.common.credentials import password
 from castellan.common.credentials import token
 from castellan.common import exception
 import requests
+from multiprocessing import shared_memory
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -97,15 +98,44 @@ def get_keystone_pass(username):
         :param username: the username to retrieve the password for
         :return: the keystone password
         """
-        session = requests.Session()
-        vouch_comms_url = 'http://localhost:8558'
+        shared_mem = SharedStringMemory(name=username)
         try:
-            resp = session.get(f'{vouch_comms_url}/v1/creds/{username}')
-            resp.raise_for_status()
-            return resp.json()
+            status = shared_mem.connect_or_create()
+            #if cache exists and has data, read it Otherwise, write new data
+            if status == "connected" and shared_mem.has_data():
+                LOG.info(f"cache for {username} already exists and has data.")
+                creds = shared_mem.read_variable()
+                if creds is not None:
+                    shared_mem.close()
+                    return creds
+                else:
+                    LOG.warning(f"No data found in cache for {username}.")
+                          
+            LOG.info(f"New cache for {username} created.") 
+            # Fetch creds from vouch
+            session = requests.Session()
+            vouch_comms_url = 'http://localhost:8558'
+            try:
+                resp = session.get(f'{vouch_comms_url}/v1/creds/{username}')
+                resp.raise_for_status()
+                creds = resp.json()
+                try:
+                    shared_mem.write_variable(creds)
+                    shared_mem.close()
+                except Exception as e:
+                    LOG.error('Error writing to cache for %s: %s', username, e)
+                    shared_mem.cleanup()
+                    pass
+                
+                return creds
+                
+            except Exception as e:
+                shared_mem.cleanup()
+                LOG.error('Could not fetch data info from vouch, %s: %s',vouch_comms_url , e)
+                raise
         except Exception as e:
-            LOG.error('Could not fetch password info from vouch, %s: %s',vouch_comms_url , e)
-            raise
+            LOG.error('Error accessing cache for %s: %s', username, e)
+            raise 
 
 def credential_factory(conf=None, context=None):
     """This function provides a factory for credentials.
@@ -196,3 +226,83 @@ def credential_factory(conf=None, context=None):
     return keystone_token.KeystoneToken(
         context.auth_token,
         project_id=project_id)
+
+
+class SharedStringMemory:
+    def __init__(self, name="shared_variable", size=256):
+        self.name = name
+        self.size = size
+        self.shm = None
+    
+    def connect_or_create(self):
+        """Try to connect to existing cache, create if doesn't exist"""
+        try:
+            # Try to connect to existing cache
+            self.shm = shared_memory.SharedMemory(name=self.name)
+            LOG.info(f"Connected to existing cache: {self.name}")
+            return "connected"
+        except FileNotFoundError:
+            # Create new cache if doesn't exist
+            self.shm = shared_memory.SharedMemory(name=self.name, create=True, size=self.size)
+            LOG.info(f"Created new cache: {self.name}")
+            # Initialize with empty data
+            self.shm.buf[:] = b'\x00' * self.size
+            return "created"
+    
+    def write_variable(self, message):
+        """Encode message with UTF-8 and write to cache"""
+        if not self.shm:
+            raise RuntimeError("cache not initialized")
+        
+        encoded_data = message.encode('utf-8') 
+        
+        if len(encoded_data) >= self.size - 4:  # Reserve 4 bytes for length
+            raise ValueError(f"Encoded message too long. Max size: {self.size-4}")
+        
+        # Clear buffer
+        self.shm.buf[:] = b'\x00' * self.size
+        
+        # Write message
+        self.shm.buf[:len(encoded_data)] = encoded_data
+        self.shm.buf[len(encoded_data)] = 0  # Null terminator
+        
+    def read_variable(self):
+        """Read from cache and decode from UTF-8"""
+        if not self.shm:
+            LOG.error("cache not initialized")
+            return None
+        
+        data = bytes(self.shm.buf)
+        null_pos = data.find(0)
+        
+        if null_pos == 0:
+            LOG.warning("No data found in cache")
+            return None  
+        elif null_pos != -1:
+            message = data[:null_pos].decode('utf-8')
+        else:
+            message = data.decode('utf-8').rstrip('\x00') 
+         
+        return message
+           
+    
+    def has_data(self):
+        """Check if cache contains data"""
+        if not self.shm:
+            return False
+        return self.shm.buf[0] != 0
+    
+    def close(self):
+        """Close cache connection"""
+        if self.shm:
+            self.shm.close()
+    
+    def cleanup(self):
+        """Close and unlink cache"""
+        if self.shm:
+            self.shm.close()
+            try:
+                self.shm.unlink()
+                LOG.info(f"Cleaned up cache: {self.name}")
+            except FileNotFoundError:
+                pass  # Already cleaned up

@@ -117,32 +117,44 @@ class CastellanConfigurationSource(sources.ConfigurationSource):
     def get(self, group_name, option_name, opt):
         if self.ks_context is None:
            self.ks_context = utils.credential_factory(self.conf)
-        try:
-            group_name = group_name or "DEFAULT"
-            if option_name is None and opt is not None:
-                castellan_id = opt
-            else:
-                castellan_id = self._mapping[group_name][option_name][0]
+        
+        for retry_count in range(10):
+            try:
+                group_name = group_name or "DEFAULT"
+                if option_name is None and opt is not None:
+                    castellan_id = opt
+                else:
+                    castellan_id = self._mapping[group_name][option_name][0]
 
-            return (self._mngr.get(self.ks_context, castellan_id).get_encoded().decode(),
-                    cfg.LocationInfo(cfg.Locations.user, castellan_id))
+                return (self._mngr.get(self.ks_context, castellan_id).get_encoded().decode(),
+                        cfg.LocationInfo(cfg.Locations.user, castellan_id))
 
-        except KeyError:
-            pass
-            # no mapping 'option = castellan_id'
-            #LOG.debug("option '[%s] %s' not present in '[%s] mapping_file'",
-            #         group_name, option_name, self._name)
+            except KeyError:
+                break  # Exit loop for KeyError
+                # no mapping 'option = castellan_id'
+                #LOG.debug("option '[%s] %s' not present in '[%s] mapping_file'",
+                #         group_name, option_name, self._name)
+            
+            # KeyManagerError is raised when there is auth error or https server error 
+            # or barbican client error, in this case we need to retry 
+            except KeyManagerError:
+                if retry_count == 9:  # Last attempt (0-9 = 10 attempts)
+                    LOG.error("KeyManagerError for option '[%s] %s' in '[%s] "
+                              "mapping_file' after %d retries. Exiting process.",
+                              group_name, option_name, self._name, retry_count + 1)
+                    import sys
+                    sys.exit(1)  # Exit the process with error code
+                else:
+                    LOG.warning("KeyManagerError for option '[%s] %s' in '[%s] "
+                               "mapping_file', retry %d/10",
+                               group_name, option_name, self._name, retry_count + 1)
+                    continue  # Retry for KeyManagerError
 
-        except KeyManagerError:
-            # bad mapping 'option =' without a castellan_id
-            LOG.error("missing castellan_id for option '[%s] %s' in '[%s] "
-                      "mapping_file'",
-                      group_name, option_name, self._name)
-
-        except ManagedObjectNotFoundError:
-            # good mapping, but unknown castellan_id by secret manager
-            LOG.error("invalid castellan_id for option '[%s] %s' in '[%s] "
-                      "mapping_file'",
-                      group_name, option_name, self._name)
+            except ManagedObjectNotFoundError:
+                # good mapping, but unknown castellan_id by secret manager
+                LOG.error("invalid castellan_id for option '[%s] %s' in '[%s] "
+                          "mapping_file'",
+                          group_name, option_name, self._name)
+                break  # Exit loop for ManagedObjectNotFoundError
 
         return (sources._NoValue, None)
